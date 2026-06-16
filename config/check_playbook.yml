@@ -1,0 +1,161 @@
+# Check playbook — operator-declared "what to check" knowledge base
+# ==================================================================
+# What this is: a deterministic rule table mapping a finding_type to the
+# diagnostic next steps an operator should CHECK. It is the recommendations
+# layer's knowledge base, the sibling of operational_graph.yml — that file
+# declares *meaning* (dependencies / consequence); this one declares *diagnosis*
+# (what to look at next). Loaded by cognition/check_mapper.py.
+#
+# PHILOSOPHY (binding):
+#   - Advisory only. Every step says what to CHECK / INSPECT / CONFIRM — never an
+#     action that mutates infrastructure. The operator decides and acts.
+#   - Deterministic. Same finding + same graph -> same steps. No LLM, no ranking
+#     model: a rule lookup plus evidence binding.
+#   - Evidence-cited. Each step carries an `evidence` note grounding it in the
+#     finding's own fields, the kernel/journal artifact, or operational_graph.yml.
+#   - Never invent. A finding_type with no rule yields NO recommendation (valid).
+#     A step whose template references a value we cannot bind is skipped, never
+#     rendered with a raw `{placeholder}` and never guessed.
+#
+# TEMPLATE PLACEHOLDERS (bound by check_mapper from the finding + graph):
+#   {service}     normalised service label    (redis-server.service -> redis-server)
+#   {unit}        systemd unit name           (resource ending in .service)
+#   {file}        filesystem path             (resource beginning with /)
+#   {port}        TCP port number             (resource "port:8001" -> 8001)
+#   {process}     process name                (kernel_oom_kill resource)
+#   {dependents}  comma-joined labels of graph nodes that depend on this one
+#                 (from operational_graph.yml via graph_store). A step that
+#                 references {dependents} is emitted ONLY when dependents exist.
+#
+# A step is emitted only if EVERY placeholder it references is bound. This is how
+# "Unknown -> no step" is enforced mechanically.
+
+version: "1"
+
+rules:
+
+  # ── kernel_oom_kill ──────────────────────────────────────────────────────
+  # Encodes the diagnostic path actually walked in the 2026-06-08 incident:
+  # scope (memcg vs global) -> pressure source (docker stats) -> containment
+  # (known cap) -> swap headroom -> victim footprint -> downstream recovery.
+  kernel_oom_kill:
+    note: >
+      Diagnostic checklist for an out-of-memory kill: establish scope, find the
+      pressure source, confirm whether a cap contained the blast radius, then
+      verify recovery. Advisory — the system does not act.
+    steps:
+      - check: >
+          Establish OOM scope: run `journalctl -k | grep -i 'oom-kill:constraint'`.
+          `constraint=CONSTRAINT_MEMCG` means a container hit its own cgroup limit
+          (contained); `constraint=CONSTRAINT_NONE` means host-global pressure
+          (every service on the box is at risk).
+        why: Container-scoped and host-global kills have different blast radii and fixes.
+        evidence: "finding evidence (raw kernel OOM line) + journalctl -k"
+      - check: >
+          Find which container is nearest its cap: `docker stats --no-stream` and
+          read the MEM % column — the container closest to 100% is the likely
+          pressure source, which is often NOT the process the kernel killed.
+        why: The killed process ({process}) is frequently the victim, not the cause.
+        evidence: "docker stats --no-stream"
+      - check: >
+          Confirm whether a memory cap contained the blast radius:
+          `docker inspect <container> --format '{{.Name}} {{.HostConfig.Memory}}'`
+          (0 = uncapped) or `systemctl show <unit> -p MemoryMax`. A known cap means
+          the kill was bounded to that unit rather than threatening the host.
+        why: >
+          On 2026-06-08 a 3g container cap + 4G swap held next-server at ~580MB
+          (<< cap) — the cap is precisely what made that OOM contained, not fatal.
+        evidence: "docker inspect / systemctl show MemoryMax"
+      - check: >
+          Check swap headroom: `free -h` and `swapon --show`. Exhausted or absent
+          swap turns transient memory pressure straight into kills.
+        why: Swap is the buffer between memory pressure and an OOM kill.
+        evidence: "free -h; swapon --show"
+      - check: >
+          Examine the killed process `{process}` and its footprint at kill time
+          (see the finding's RSS evidence). Decide whether that size is expected
+          load or a leak / unbounded cache.
+        why: A process far above its normal footprint indicates a leak, not load.
+        evidence: "finding.resource + finding evidence (RSS at kill)"
+      - check: >
+          This node feeds dependents ({dependents}). Verify each recovered after
+          the kill — an OOM can silently take downstream consumers with it.
+        why: Downstream consumers may not auto-recover when their dependency is killed.
+        evidence: "operational_graph.yml dependents"
+
+  # ── repeated_service_restart ─────────────────────────────────────────────
+  repeated_service_restart:
+    note: >
+      A unit restarting repeatedly is a symptom; establish the cause (crash, OOM,
+      failed dependency, bad config) before treating it. Advisory.
+    steps:
+      - check: >
+          Read why it is restarting: `journalctl -u {unit} -n 100 --no-pager` and
+          `systemctl status {unit}`. Note the exit code / signal on each restart.
+        why: The exit reason (crash vs OOM vs dependency vs config) determines the fix.
+        evidence: "journalctl -u {unit}; systemctl status {unit}"
+      - check: >
+          Quantify the loop: `systemctl show {unit} -p NRestarts -p ExecMainStatus`.
+          A tight restart loop is more urgent than occasional flapping.
+        why: Loop vs flap changes both urgency and likely root cause.
+        evidence: "systemctl show {unit} -p NRestarts"
+      - check: >
+          Rule out memory pressure as the trigger: the memory line in
+          `systemctl status {unit}` plus `free -h`. A unit OOM-killed by its own
+          MemoryMax restarts repeatedly.
+        why: Repeated restarts are frequently a downstream symptom of memory pressure.
+        evidence: "systemctl status {unit}; free -h"
+      - check: >
+          Dependents rely on {service} ({dependents}). Check whether the flapping
+          is intermittently degrading them.
+        why: A flapping shared service intermittently breaks every consumer.
+        evidence: "operational_graph.yml dependents"
+
+  # ── world_readable_env_file ──────────────────────────────────────────────
+  world_readable_env_file:
+    note: >
+      Confirm the exposure, scope which secrets are affected, and judge real
+      reachability before acting. Advisory — chmod/rotation are the operator's call.
+    steps:
+      - check: >
+          Confirm current permissions: `ls -l {file}` and `stat -c '%a %U:%G' {file}`.
+          World-readable means the last mode digit is 4/5/6/7; perms may already
+          have been tightened since the scan.
+        why: Verify the finding still holds before acting on it.
+        evidence: "finding.resource (file path)"
+      - check: >
+          Scope the exposure: `grep -oE '^[A-Z_]+=' {file}` lists the KEY NAMES
+          only (never the values) so you can see which credentials would need
+          rotation, not just a chmod.
+        why: Exposure scope decides whether rotation is required, not only chmod.
+        evidence: "finding.resource (file path)"
+      - check: >
+          Judge real reachability: is the parent directory already 700-protected?
+          `ls -ld $(dirname {file})`. Under /root (mode 700) exploitability is low;
+          under /home, /srv or /etc it is real.
+        why: A world-readable file inside a 700 directory is far less reachable.
+        evidence: "finding.resource + parent directory mode"
+
+  # ── credential_in_unit_file ──────────────────────────────────────────────
+  credential_in_unit_file:
+    note: >
+      An inlined secret in a (often world-readable) unit file. Confirm what is
+      exposed and to whom, then plan rotation — relocation alone does not undo
+      prior exposure. Advisory.
+    steps:
+      - check: >
+          Inspect the offending unit: `systemctl cat {unit}` — locate the inline
+          `Environment=` / `ExecStart=` credential(s).
+        why: Confirm exactly which secret is inlined before rotating.
+        evidence: "systemctl cat {unit}"
+      - check: >
+          Check who can read it: `ls -l $(systemctl show {unit} -p FragmentPath --value)`
+          (unit files are often world-readable) and, as root, the live process env
+          `cat /proc/$(systemctl show {unit} -p MainPID --value)/environ`.
+        why: A world-readable unit exposes the inlined secret to every local user.
+        evidence: "systemctl show {unit} FragmentPath/MainPID"
+      - check: >
+          Plan rotation, not just relocation: list the exposed keys and everywhere
+          else they are used before moving them to a mode-600 `EnvironmentFile=`.
+        why: Moving the secret does not undo prior exposure — rotate what was readable.
+        evidence: "finding evidence (matched credential patterns)"

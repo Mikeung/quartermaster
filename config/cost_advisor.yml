@@ -1,0 +1,43 @@
+# Cost advisor — operator declarations (the Economics slot)
+# ==========================================================
+# Two operator-owned things the cost advisor cannot infer:
+#   1. budget        — how much you intend to spend (warn as approached)
+#   2. keys          — which provider API key belongs to which agent
+#
+# Both are HUMAN-DECLARED and STICKY. Reconciliation never overwrites them.
+# Run after editing:   python scripts/load_cost_keys.py [--dry-run]
+#
+# EVIDENCE RULE: only declare a key→agent binding you can prove. Cite the proof
+# in `evidence`. If a key serves several agents, set `shared: true` — the advisor
+# will then decline a 1:1 attribution and recommend isolating the agent's key.
+# NEVER put a secret value in this file. A key is identified by the provider's
+# key_id and a last-4 key_hint only.
+
+version: "1"
+
+# ── BUDGET (human-declared) ──────────────────────────────────────────────────
+# Uncomment and set to enable "warn as approached" + a money-critical on exceed.
+# The advisor never invents this number; until you set it, the budget view is
+# inactive (reported honestly as "not declared").
+#
+# budget:
+#   period: monthly        # monthly | daily
+#   limit_usd: 200.0       # your intended ceiling
+#   scope: all             # all | anthropic | openai | google
+
+# ── KEY → AGENT LABELS (human_declared, sticky; a one-time tag) ───────────────
+# Each entry binds a provider key's spend to a graph node (agent). Where a
+# provider exposes per-key usage and the key maps 1:1 to an agent, the advisor
+# attributes that spend to the agent. Example shape (fill from your own knowledge
+# of which key is whose — do not guess):
+#
+# keys:
+#   - provider: anthropic
+#     key_id: "apikey_01ABC..."      # the provider's key id (NOT the secret)
+#     key_hint: "a1b2"               # last 4 of the key, for your recognition
+#     agent: "repo:lesia"            # graph builder_node_id of the owning agent
+#     agent_target: "/srv/lesia"
+#     shared: false                  # true if this key serves multiple agents
+#     evidence: "lesia/.env ANTHROPIC_API_KEY ends a1b2; sole consumer of this key"
+
+keys: []

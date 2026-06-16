@@ -1,0 +1,40 @@
+# Project context registry — describe YOUR environment here.
+# Copy to config/projects.yml and edit. Loaded at import by config/project_context.py.
+# Everything is operator-declared and deterministic; describe only what you can verify.
+#
+#   projects          — project_id -> { project, purpose, runtime, subsystems{}, services{} }
+#   aliases           — alternate id -> canonical project_id
+#   service_ownership — process/unit name -> { project_id, subsystem, service, confidence, basis }
+#   port_ownership    — port number -> { project_id, subsystem, service, basis }
+#   path_roots        — filesystem root -> project_id (longest-prefix match for path findings)
+
+projects:
+  demo-app:
+    project: "Demo App"
+    purpose: "Example service — replace with your own project."
+    runtime: python
+    subsystems:
+      worker: "Background queue-processing worker."
+    services:
+      demo-worker: "The worker process that drains the job queue."
+
+aliases:
+  demo: demo-app
+
+service_ownership:
+  demo-worker:
+    project_id: demo-app
+    subsystem: worker
+    service: demo-worker
+    confidence: High
+    basis: "systemd unit runs from the demo-app tree — confirmed ownership."
+
+port_ownership:
+  9000:
+    project_id: demo-app
+    subsystem: api
+    service: "port:9000"
+    basis: "uvicorn on 0.0.0.0:9000 is the demo-app API."
+
+path_roots:
+  /srv/demo-app: demo-app

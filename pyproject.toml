@@ -1,0 +1,85 @@
+[project]
+name = "quartermaster"
+version = "0.1.0"
+description = "Advisory-only operational intelligence that explains an unfamiliar VPS"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "quartermaster contributors" }]
+keywords = ["observability", "operations", "vps", "llm", "cost", "advisory", "infrastructure"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "python-dotenv>=1.0.0",
+    "python-json-logger>=2.0.7",
+    "apscheduler>=3.10.0",
+    "psutil>=5.9.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Mikeung/quartermaster"
+Repository = "https://github.com/Mikeung/quartermaster"
+Issues = "https://github.com/Mikeung/quartermaster/issues"
+
+[project.scripts]
+qm = "cli.main:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*", "scanners*", "memory*", "topology*", "llm_intelligence*", "observability*", "reports*", "cognition*", "economics*", "delivery*", "integrations*", "schemas*", "sdk*", "cli*", "config*", "tools*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
+# E501: long lines tolerated. B008: FastAPI Depends() default. E741: ambiguous names.
+# RUF001/002/003: this tool intentionally uses Unicode in human-facing strings,
+# docstrings, and reports (arrows →, ·, ≥, …, and non-ASCII project names) — the
+# "ambiguous character" warnings are noise here. RUF005/RUF059/UP042: stylistic
+# modernizations not enforced across this codebase.
+ignore = ["E501", "B008", "E741", "RUF001", "RUF002", "RUF003", "RUF005", "RUF059", "UP042"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend", "scanners", "memory", "topology", "llm_intelligence", "observability", "cognition", "reports"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+exclude = ["tests/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+log_cli = true
+log_cli_level = "INFO"
