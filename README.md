@@ -12,6 +12,10 @@ nothing to hallucinate, nothing to prompt-inject, nothing to bill. Quartermaster
 watches your AI fleet precisely *because* it isn't one of them.
 → [Why the overseer isn't an AI](docs/WHY_DETERMINISTIC.md)
 
+![Quartermaster cost-advisor demo](assets/demo.gif)
+
+_(demo data — output is generated from evidence on your own box.)_
+
 You're running a fleet of agents and automations on a box: a research worker, a
 summarizer, an ingest bot, a couple of cron jobs, a database, an LLM agent quietly
 burning money — and no map of any of it. Quartermaster is a read-only assistant you
