@@ -47,6 +47,7 @@ Issues = "https://github.com/Mikeung/quartermaster/issues"
 
 [project.scripts]
 qm = "cli.main:main"
+quartermaster = "cli.main:main"
 
 [build-system]
 requires = ["setuptools>=61"]

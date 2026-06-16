@@ -67,6 +67,8 @@ never logged, returned, or committed. No root required. See [SECURITY.md](SECURI
 pip install -e ".[dev]"
 cp .env.example .env                       # edit locally; never commit it
 QM_SCAN_TARGETS=/path/to/agents python scripts/scheduled_scan.py
+
+qm cost --window 30d                       # spend per provider, attribution & budget
 # or serve the read-only API:  uvicorn backend.main:app --port 8000  then:  qm health
 ```
 

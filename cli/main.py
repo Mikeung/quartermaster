@@ -373,6 +373,31 @@ def cmd_integration_check(args: argparse.Namespace) -> int:
     return 0 if report.ready else 1
 
 
+def _parse_window(s: str) -> int:
+    """Parse a lookback window ('24h', '7d', '30d', or a bare hour count) -> hours."""
+    s = str(s).strip().lower()
+    try:
+        if s.endswith("d"):
+            return max(1, int(float(s[:-1]) * 24))
+        if s.endswith("h"):
+            return max(1, int(float(s[:-1])))
+        return max(1, int(float(s)))
+    except ValueError:
+        return 24
+
+
+def cmd_cost(args: argparse.Namespace) -> int:
+    """Cost advisor — spend per provider, attribution, and budget (read-only)."""
+    from economics.runner import build_live
+    from reports.cost_advisor_report import render_cost_advisor_report
+
+    built = build_live(window_hours=_parse_window(args.window))
+    for e in built["key_errors"]:
+        _warn(f"cost_advisor.yml: {e}")
+    print(render_cost_advisor_report(built["advisory"], built["investigations"]))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -430,6 +455,11 @@ def build_parser() -> argparse.ArgumentParser:
     ic.add_argument("--project", required=True, help="Project ID to validate against")
     ic.add_argument("--json", action="store_true", help="Output JSON")
 
+    # cost
+    cost = sub.add_parser("cost", help="Cost advisor — spend per provider, attribution & budget")
+    cost.add_argument("--window", default="24h",
+                      help="Lookback window, e.g. 24h, 7d, 30d (default: 24h)")
+
     return parser
 
 
@@ -448,6 +478,7 @@ def main() -> int:
         "report": cmd_report,
         "send-test": cmd_send_test,
         "integration-check": cmd_integration_check,
+        "cost": cmd_cost,
     }
 
     handler = dispatch.get(args.command)
