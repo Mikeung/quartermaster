@@ -39,9 +39,14 @@ def _staged_files() -> list[str]:
     return [f for f in r.stdout.split("\n") if f.strip()]
 
 
+_BINARY_SUFFIXES = (".gif", ".png", ".jpg", ".jpeg", ".ico", ".webp", ".woff",
+                    ".woff2", ".ttf", ".otf", ".pdf", ".zip", ".gz", ".so", ".pyc")
+
+
 def _staged_content(path: str) -> str:
-    r = subprocess.run(["git", "show", f":{path}"], capture_output=True, text=True)
-    return r.stdout
+    # bytes + lenient decode: never crash on a binary blob staged for commit.
+    r = subprocess.run(["git", "show", f":{path}"], capture_output=True)
+    return r.stdout.decode("utf-8", "ignore")
 
 
 def main(argv: list[str]) -> int:
@@ -49,9 +54,11 @@ def main(argv: list[str]) -> int:
     files = explicit or _staged_files()
     bad = False
     for f in files:
+        if f.lower().endswith(_BINARY_SUFFIXES):
+            continue  # binary assets carry no scannable text
         try:
             content = open(f, errors="ignore").read() if explicit else _staged_content(f)
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         for name in _scan(content):
             print(f"BLOCKED: {f} contains a {name}", file=sys.stderr)
